@@ -87,6 +87,6 @@
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>
-    <PostBuildEvent>copy /Y $(TargetDir)$(TargetFileName) D:\GAMES\SDVX\kemono\UnityApp\BepInEx\plugins\</PostBuildEvent>
+    <PostBuildEvent>copy /Y $(TargetDir)$(TargetFileName) L:\SDVX\kemono\UnityApp\BepInEx\plugins\</PostBuildEvent>
   </PropertyGroup>
 </Project>

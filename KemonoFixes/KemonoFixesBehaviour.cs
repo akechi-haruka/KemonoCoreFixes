@@ -3,6 +3,7 @@ using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
 using PrinterAPI;
+using SGNFW.Http;
 using System;
 using System.IO;
 using UnityEngine;
@@ -17,6 +18,9 @@ namespace KemonoFixes {
         public static ConfigEntry<bool> ConfigPrinterEmu;
         public static ConfigEntry<bool> ConfigDummyCameras;
         public static ConfigEntry<String> ConfigPrinterOutputDir;
+        public static ConfigEntry<bool> ConfigUseHTTP;
+        public static ConfigEntry<bool> ConfigDisableEncryption;
+        public static ConfigEntry<bool> ConfigShowCursor;
 
         public void Awake() {
             Log = Logger;
@@ -24,10 +28,23 @@ namespace KemonoFixes {
             ConfigPrinterEmu = Config.Bind("General", "Printer Emulation", true, "Enables printer emulation");
             ConfigDummyCameras = Config.Bind("General", "Dummy Cameras", true, "Enables dummy cameras");
             ConfigPrinterOutputDir = Config.Bind("General", "Printer Output Path", "printer", "Directory where printed images are written to");
+            ConfigShowCursor = Config.Bind("General", "Show Cursor", true, "Show and unlock mouse cursor");
+
+            ConfigUseHTTP = Config.Bind("Network", "Use HTTP instead of HTTPS", true, "Disables the use of HTTPS");
+            ConfigDisableEncryption = Config.Bind("Network", "Disable Network Encryption", true, "Disable network encryption");
+
+            Manager.IsForceNoSecureRequest = ConfigUseHTTP.Value;
 
             Harmony.CreateAndPatchAll(typeof(CorePatches));
             Harmony.CreateAndPatchAll(typeof(PrinterPatches));
             Harmony.CreateAndPatchAll(typeof(CameraPatches));
+        }
+
+        public void Update() {
+            if (!Cursor.visible && ConfigShowCursor.Value) {
+                Cursor.visible = true;
+                Cursor.lockState = CursorLockMode.None;
+            }
         }
 
     }
@@ -43,6 +60,13 @@ namespace KemonoFixes {
         static bool KickAMDaemon(ref bool __result) {
             __result = true;
             return false;
+        }
+
+        [HarmonyPostfix, HarmonyPatch(typeof(Manager), "DefaultEncryptKey", MethodType.Getter)]
+        static void DefaultEncryptKey(ref string __result) {
+            if (KemonoFixesBehaviour.ConfigDisableEncryption.Value) {
+                __result = null;
+            }
         }
 
     }
