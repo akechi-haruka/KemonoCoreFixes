@@ -6,6 +6,8 @@ using PrinterAPI;
 using SGNFW.Http;
 using System;
 using System.IO;
+using System.Runtime.Remoting.Messaging;
+using System.Text;
 using UnityEngine;
 using static GameInfoManager;
 
@@ -60,37 +62,56 @@ namespace KemonoFixes {
         [HarmonyPostfix, HarmonyPatch(typeof(WebCamTexture), "devices", MethodType.Getter)]
         static void get_devices(ref WebCamDevice[] __result) {
             if (KemonoFixesBehaviour.ConfigDummyCameras.Value) {
-                __result = new WebCamDevice[] {
-                    new WebCamDevice(){
-                        m_Name = "Dummy1",
-                        m_DepthCameraName = "Dummy1",
-                        m_Resolutions = new Resolution[] {
-                            new Resolution {
-                                width = 1920,
-                                height = 1080
-                            },
-                            new Resolution {
-                                width = 1280,
-                                height = 720
-                            },
+                if (__result.Length == 0) {
+                    __result = new WebCamDevice[] {
+                        new WebCamDevice(){
+                            m_Name = "Dummy1",
+                            m_DepthCameraName = "Dummy1",
+                            m_Resolutions = new Resolution[] {
+                                new Resolution {
+                                    width = 1920,
+                                    height = 1080
+                                },
+                                new Resolution {
+                                    width = 1280,
+                                    height = 720
+                                },
+                            }
+                        },
+                        new WebCamDevice(){
+                            m_Name = "Dummy2",
+                            m_DepthCameraName = "Dummy2",
+                            m_Resolutions = new Resolution[] {
+                                new Resolution {
+                                    width = 1920,
+                                    height = 1080
+                                },
+                                new Resolution {
+                                    width = 1280,
+                                    height = 720
+                                },
+                            }
                         }
-                    },
-                    new WebCamDevice(){
-                        m_Name = "Dummy2",
-                        m_DepthCameraName = "Dummy2",
-                        m_Resolutions = new Resolution[] {
-                            new Resolution {
-                                width = 1920,
-                                height = 1080
-                            },
-                            new Resolution {
-                                width = 1280,
-                                height = 720
-                            },
+                    };
+                } else if (__result.Length == 1) {
+                    __result = new WebCamDevice[] {
+                        __result[0],
+                        new WebCamDevice(){
+                            m_Name = "Dummy2",
+                            m_DepthCameraName = "Dummy2",
+                            m_Resolutions = new Resolution[] {
+                                new Resolution {
+                                    width = 1920,
+                                    height = 1080
+                                },
+                                new Resolution {
+                                    width = 1280,
+                                    height = 720
+                                },
+                            }
                         }
-                    }
-                };
-
+                    };
+                }
             }
         }
 
