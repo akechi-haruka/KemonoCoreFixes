@@ -2,10 +2,17 @@
 using BepInEx.Configuration;
 using BepInEx.Logging;
 using HarmonyLib;
+using ParadeA.Protocol;
 using PrinterAPI;
+using SGNFW.Common;
+using SGNFW.Common.Server;
 using SGNFW.Http;
+using SGNFW.Login;
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.Remoting.Messaging;
 using System.Text;
 using UnityEngine;
@@ -18,20 +25,28 @@ namespace KemonoFixes {
 
         public static ManualLogSource Log;
         public static ConfigEntry<bool> ConfigDummyCameras;
+        public static ConfigEntry<bool> ConfigDummyCamerasF;
         public static ConfigEntry<bool> ConfigUseHTTP;
         public static ConfigEntry<bool> ConfigDisableEncryption;
         public static ConfigEntry<bool> ConfigShowCursor;
+        public static ConfigEntry<String> ConfigPrimaryCamera;
 
         public void Awake() {
             Log = Logger;
 
-            ConfigDummyCameras = Config.Bind("General", "Dummy Cameras", true, "Enables dummy cameras");
+            ConfigDummyCameras = Config.Bind("General", "Dummy Cameras", true, "Enables dummy cameras to fill missing camera slots");
+            ConfigDummyCamerasF = Config.Bind("General", "Force Dummy Cameras", true, "Forces dummy cameras, regardless if you have a camera attached.");
             ConfigShowCursor = Config.Bind("General", "Show Cursor", true, "Show and unlock mouse cursor");
+            ConfigPrimaryCamera = Config.Bind("General", "Primary Camera", "", "The camera name to use for card reading. \"Force Dummy Cameras\" must be disabled to use this.");
 
             ConfigUseHTTP = Config.Bind("Network", "Use HTTP instead of HTTPS", true, "Disables the use of HTTPS");
             ConfigDisableEncryption = Config.Bind("Network", "Disable Network Encryption", true, "Disable network encryption");
 
             Manager.IsForceNoSecureRequest = ConfigUseHTTP.Value;
+
+            foreach (var cam in WebCamTexture.devices) {
+                Log.LogInfo("Attached Camera: " + cam.name);
+            }
 
             Harmony.CreateAndPatchAll(typeof(CorePatches));
             Harmony.CreateAndPatchAll(typeof(CameraPatches));
@@ -62,7 +77,18 @@ namespace KemonoFixes {
         [HarmonyPostfix, HarmonyPatch(typeof(WebCamTexture), "devices", MethodType.Getter)]
         static void get_devices(ref WebCamDevice[] __result) {
             if (KemonoFixesBehaviour.ConfigDummyCameras.Value) {
-                if (__result.Length == 0) {
+
+                if (KemonoFixesBehaviour.ConfigPrimaryCamera.Value != "") {
+                    List<WebCamDevice> list = new List<WebCamDevice>();
+                    foreach (WebCamDevice cam in __result) {
+                        if (cam.name.Contains(KemonoFixesBehaviour.ConfigPrimaryCamera.Value)) {
+                            list.Add(cam);
+                        }
+                    }
+                    __result = list.ToArray();
+                }
+
+                if (__result.Length == 0 || KemonoFixesBehaviour.ConfigDummyCamerasF.Value) {
                     __result = new WebCamDevice[] {
                         new WebCamDevice(){
                             m_Name = "Dummy1",
@@ -115,29 +141,19 @@ namespace KemonoFixes {
             }
         }
 
-        private static int CurrentCamera = 0;
-
-        [HarmonyPrefix, HarmonyPatch(typeof(QrCodeDecoder), "OnFoundResult")]
-        static bool OnFoundResult(ref bool __result, out QrCodeDecoder.FoundResult foundResult) {
-            if (KemonoFixesBehaviour.ConfigDummyCameras.Value) {
-                foundResult = QrCodeDecoder.FoundResult.RecognitionCode;
-                __result = true;
-                return false;
-            }
-            foundResult = QrCodeDecoder.FoundResult.Nothing;
-            return true;
-        }
-
         [HarmonyPrefix, HarmonyPatch(typeof(USBCameraDevice), MethodType.Constructor, typeof(int), typeof(string), typeof(bool), typeof(bool), typeof(bool), typeof(bool))]
-        static bool USBCameraDeviceCtor(int in_pos, string in_deviceName, bool vertical, bool horizon, bool twice, bool swing) {
+        static bool USBCameraDeviceCtor(USBCameraDevice __instance, int in_pos, string in_deviceName, bool vertical, bool horizon, bool twice, bool swing) {
             KemonoFixesBehaviour.Log.LogDebug("USBCameraDeviceCtor("+in_pos+", "+in_deviceName+")");
-            CurrentCamera = in_pos;
+
+            if (KemonoFixesBehaviour.ConfigDummyCameras.Value) {
+                GameInfoManager.Instance.CameraInfo.m_Camera[in_pos] = __instance; // fix dummy code not being read if emulating one camera
+            }
             return true;
         }
 
         [HarmonyPostfix, HarmonyPatch(typeof(CameraCheck), "Check")]
         static void Check(ref int __result, ref int ___m_error_id) {
-            if (KemonoFixesBehaviour.ConfigDummyCameras.Value && ___m_error_id == 3011) { // idk, probably dnspy is giving me something wrong here
+            if (KemonoFixesBehaviour.ConfigDummyCameras.Value && (___m_error_id == 3011 || ___m_error_id == 3005)) { // ignore errors for camera 2 missing (no known purpose?) and dummy code (not needed)
                 ___m_error_id = 0;
                 __result = 0;
             }
