@@ -4,6 +4,7 @@ using BepInEx.Logging;
 using HarmonyLib;
 using ParadeA.Protocol;
 using PrinterAPI;
+using SerialPortAPI;
 using SGNFW.Common;
 using SGNFW.Common.Server;
 using SGNFW.Http;
@@ -33,16 +34,19 @@ namespace KemonoFixes {
         public static ConfigEntry<bool> ConfigDisableEncryption;
         public static ConfigEntry<bool> ConfigShowCursor;
         public static ConfigEntry<String> ConfigPrimaryCamera;
+        public static ConfigEntry<int> ConfigLEDPort;
 
         public void Awake() {
             Log = Logger;
 
             ConfigDummyCameras = Config.Bind("General", "Dummy Cameras", CameraSetting.Replace, "Emulates some dummy cameras for the cabinet so you don't run into errors.\n\n* Off: No cameras are emulated (you need 2 real cameras)\n* Fill: Adds dummy cameras to your existing ones so there's always two cameras are present.\n* Replace: Ignores any real camera and always uses dummy cameras.");
             ConfigShowCursor = Config.Bind("General", "Show Cursor", true, "Show and unlock mouse cursor");
-            ConfigPrimaryCamera = Config.Bind("General", "Primary Camera", "", "The camera name to use for card reading. \"Dummy Cameras\" must be set to Off or Fill to use this. This is useful if the first detected camera is a virtual one or similar.");
+            ConfigPrimaryCamera = Config.Bind("General", "Primary Camera", "", "The camera name to use for card reading. \"Dummy Cameras\" must be set to Off or Fill to use __instance. This is useful if the first detected camera is a virtual one or similar.");
 
             ConfigUseHTTP = Config.Bind("Network", "Use HTTP instead of HTTPS", true, "Disables the use of HTTPS");
             ConfigDisableEncryption = Config.Bind("Network", "Disable Network Encryption", true, "Disable network encryption");
+
+            ConfigLEDPort = Config.Bind("Real Hardware", "LED Port", 0, "Set the LED port for a real LED board. 0 to use default.");
 
             Manager.IsForceNoSecureRequest = ConfigUseHTTP.Value;
 
@@ -145,12 +149,26 @@ namespace KemonoFixes {
 
         [HarmonyPrefix, HarmonyPatch(typeof(USBCameraDevice), MethodType.Constructor, typeof(int), typeof(string), typeof(bool), typeof(bool), typeof(bool), typeof(bool))]
         static bool USBCameraDeviceCtor(USBCameraDevice __instance, int in_pos, string in_deviceName, bool vertical, bool horizon, bool twice, bool swing) {
-            KemonoFixesBehaviour.Log.LogDebug("USBCameraDeviceCtor("+in_pos+", "+in_deviceName+")");
+            KemonoFixesBehaviour.Log.LogDebug("USBCameraDeviceCtor(" + in_pos + ", " + in_deviceName + ")");
 
             if (KemonoFixesBehaviour.ConfigDummyCameras.Value != KemonoFixesBehaviour.CameraSetting.Off) {
                 GameInfoManager.Instance.CameraInfo.m_Camera[in_pos] = __instance; // fix dummy code not being read if emulating one camera
             }
             return true;
+        }
+
+        [HarmonyPrefix, HarmonyPatch(typeof(SerialHandle), "Open")]
+        static bool Open(ref SerPortId inPortId, SerialConfig inConfig) {
+            if (KemonoFixesBehaviour.ConfigLEDPort.Value > 0) {
+                inPortId = (SerPortId)(KemonoFixesBehaviour.ConfigLEDPort.Value - 1);
+                KemonoFixesBehaviour.Log.LogInfo("LED Port changed to: " + inPortId);
+            }
+            return true;
+        }
+
+        [HarmonyPostfix, HarmonyPatch(typeof(SerFunc.NativeMethods), "serport_Open", typeof(int), typeof(int), typeof(int), typeof(int), typeof(int))]
+        static void serport_Open2(ref int in_id, ref int in_baudrate, ref int in_csize, ref int in_parity, ref int in_stopbit, bool __result) {
+            KemonoFixesBehaviour.Log.LogInfo("LED connect: " + __result);
         }
 
         [HarmonyPostfix, HarmonyPatch(typeof(CameraCheck), "Check")]
